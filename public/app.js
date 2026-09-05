@@ -1,4 +1,5 @@
 const API_URL = 'http://localhost:3000/api';
+const AUTH_URL = 'http://localhost:3000/auth';
 let ws = null;
 let currentExecutionId = null;
 let dagNodes = [];
@@ -12,6 +13,7 @@ const validateBtn = document.getElementById('btn-validate');
 const executeBtn = document.getElementById('btn-exec');
 const validationErrors = document.getElementById('validation-errors');
 const workflowNav = document.getElementById('workflow-nav');
+const customWorkflowNav = document.getElementById('custom-workflow-nav');
 const logsContainer = document.getElementById('logs-container');
 const badgeContainer = document.getElementById('exec-status-container');
 const badgeDot = document.getElementById('exec-status-dot');
@@ -22,49 +24,295 @@ const ctx = canvas.getContext('2d');
 const headerProjectName = document.getElementById('header-project-name');
 const headerRunId = document.getElementById('header-run-id');
 const dagTitle = document.getElementById('dag-title');
+const loginScreen = document.getElementById('login-screen');
+const sidebarUser = document.getElementById('sidebar-user');
+const modalOverlay = document.getElementById('modal-overlay');
 let animationFrameId;
 
-// Init Unified UI
-window.addEventListener('load', () => {
-    fetchHistory();
-    // Populate sidebar
-    if (workflowNav) {
-        workflowNav.innerHTML = '';
-        let index = 1;
-        const activeClass = 'bg-primary text-on-primary rounded-lg border-l-2 border-secondary';
-        const inactiveClass = 'rounded-lg text-on-primary-container hover:bg-primary/40 hover:text-on-primary transition-colors';
-        
-        Object.keys(examples).forEach(key => {
-            const link = document.createElement('a');
-            link.href = '#';
-            link.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${key === 'rigorous-workflow' ? activeClass : inactiveClass}`;
-            
-            let icon = 'account_tree';
-            if (key.includes('parallel')) icon = 'layers';
-            else if (key.includes('etl')) icon = 'database';
-            
-            link.innerHTML = `<span class="font-label-caps text-[10px] text-on-primary-container/60">0${index++} //</span><span class="material-symbols-outlined text-[16px]">${icon}</span><span>${examples[key].name || key}</span>`;
-            
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                // Update active state
-                Array.from(workflowNav.children).forEach(child => {
-                    child.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${inactiveClass}`;
-                });
-                link.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${activeClass}`;
-                
-                editor.value = JSON.stringify(examples[key], null, 2);
-                validationErrors.classList.add('hidden');
-            });
-            workflowNav.appendChild(link);
-        });
-    }
+// ─── JWT AUTH ────────────────────────────────────────────────────────────────
+function getToken() { return localStorage.getItem('ff_token'); }
+function setToken(t) { localStorage.setItem('ff_token', t); }
+function clearToken() { localStorage.removeItem('ff_token'); }
 
-    // Load rigorous workflow by default
+// Authenticated fetch — automatically adds Authorization header
+async function authFetch(url, options = {}) {
+    const token = getToken();
+    return fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers || {}),
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+    });
+}
+
+function hideLoginScreen() {
+    loginScreen.style.opacity = '0';
+    setTimeout(() => loginScreen.style.display = 'none', 300);
+}
+
+function showLoginScreen() {
+    clearToken();
+    loginScreen.style.display = 'flex';
+    loginScreen.style.opacity = '0';
+    setTimeout(() => loginScreen.style.opacity = '1', 10);
+}
+
+function showAuthError(msg) {
+    const el = document.getElementById('auth-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 5000);
+}
+
+function setLoadingState(btnId, loading, defaultText) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = loading;
+    btn.textContent = loading ? 'Please wait...' : defaultText;
+    btn.style.opacity = loading ? '0.7' : '1';
+}
+
+document.getElementById('show-register').addEventListener('click', () => {
+    document.getElementById('login-panel').style.display = 'none';
+    document.getElementById('register-panel').style.display = 'block';
+    document.getElementById('auth-error').style.display = 'none';
+});
+document.getElementById('show-login').addEventListener('click', () => {
+    document.getElementById('register-panel').style.display = 'none';
+    document.getElementById('login-panel').style.display = 'block';
+    document.getElementById('auth-error').style.display = 'none';
+});
+
+// Login on Enter key
+['login-username', 'login-password'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('btn-login').click();
+    });
+});
+['reg-displayname', 'reg-username', 'reg-password'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('btn-register').click();
+    });
+});
+
+document.getElementById('btn-login').addEventListener('click', async () => {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!username || !password) return showAuthError('Please enter username and password.');
+    setLoadingState('btn-login', true, 'Sign In');
+    try {
+        const res = await fetch(`${AUTH_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (!res.ok) return showAuthError(data.error || 'Login failed. Check your credentials.');
+        setToken(data.token);
+        onLoggedIn(data.displayName);
+    } catch (e) {
+        showAuthError('Cannot reach server. Make sure npm run dev is running.');
+    } finally {
+        setLoadingState('btn-login', false, 'Sign In');
+    }
+});
+
+document.getElementById('btn-register').addEventListener('click', async () => {
+    const displayName = document.getElementById('reg-displayname').value.trim();
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value;
+    if (!displayName || !username || !password) return showAuthError('All fields are required.');
+    if (username.length < 3) return showAuthError('Username must be at least 3 characters.');
+    if (password.length < 4) return showAuthError('Password must be at least 4 characters.');
+    setLoadingState('btn-register', true, 'Create Account');
+    try {
+        const res = await fetch(`${AUTH_URL}/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, displayName })
+        });
+        const data = await res.json();
+        if (!res.ok) return showAuthError(data.error || 'Registration failed.');
+        setToken(data.token);
+        onLoggedIn(data.displayName);
+    } catch (e) {
+        showAuthError('Cannot reach server. Make sure npm run dev is running.');
+    } finally {
+        setLoadingState('btn-register', false, 'Create Account');
+    }
+});
+
+document.getElementById('btn-logout').addEventListener('click', () => {
+    if (sidebarUser) sidebarUser.textContent = '—';
+    showLoginScreen();
+});
+
+function onLoggedIn(displayName) {
+    hideLoginScreen();
+    if (sidebarUser) sidebarUser.textContent = displayName;
+    fetchHistory();
+    fetchCustomWorkflows();
+}
+
+// ─── CUSTOM WORKFLOWS ─────────────────────────────────────────────────────────
+async function fetchCustomWorkflows() {
+    try {
+        const res = await authFetch(`${API_URL}/custom-workflows`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderCustomWorkflows(data);
+    } catch (e) { console.error('Failed to fetch custom workflows:', e); }
+}
+
+function renderCustomWorkflows(workflows) {
+    if (!customWorkflowNav) return;
+    customWorkflowNav.innerHTML = '';
+    if (!workflows.length) {
+        customWorkflowNav.innerHTML = '<span class="px-space-8 font-code-sm text-[10px] text-on-primary-container/40">No custom workflows yet</span>';
+        return;
+    }
+    const activeClass = 'bg-primary text-on-primary rounded-lg border-l-2 border-secondary';
+    const inactiveClass = 'rounded-lg text-on-primary-container hover:bg-primary/40 hover:text-on-primary transition-colors';
+    workflows.forEach(wf => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center group';
+        const link = document.createElement('a');
+        link.href = '#';
+        link.className = `flex-1 flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${inactiveClass}`;
+        link.innerHTML = `<span class="material-symbols-outlined text-[16px]">edit_note</span><span class="truncate max-w-[90px]">${wf.name}</span>`;
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            editor.value = JSON.stringify(wf.spec, null, 2);
+            validationErrors.classList.add('hidden');
+            // Update active states
+            Array.from(customWorkflowNav.querySelectorAll('a')).forEach(a => {
+                a.className = `flex-1 flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${inactiveClass}`;
+            });
+            link.className = `flex-1 flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${activeClass}`;
+        });
+        const delBtn = document.createElement('button');
+        delBtn.innerHTML = '×';
+        delBtn.title = 'Delete';
+        delBtn.style.cssText = 'background:none;border:none;color:#bc4749;cursor:pointer;padding:4px 8px;font-size:14px;opacity:0;transition:opacity 0.2s;';
+        row.addEventListener('mouseenter', () => delBtn.style.opacity = '1');
+        row.addEventListener('mouseleave', () => delBtn.style.opacity = '0');
+        delBtn.addEventListener('click', async () => {
+            if (!confirm(`Delete "${wf.name}"?`)) return;
+            const res = await authFetch(`${API_URL}/custom-workflows/${wf._id}`, { method: 'DELETE' });
+            if (res.ok) fetchCustomWorkflows();
+        });
+        row.appendChild(link);
+        row.appendChild(delBtn);
+        customWorkflowNav.appendChild(row);
+    });
+}
+
+// Modal
+document.getElementById('btn-add-workflow').addEventListener('click', () => {
+    document.getElementById('modal-wf-name').value = '';
+    document.getElementById('modal-wf-desc').value = '';
+    document.getElementById('modal-wf-json').value = JSON.stringify({
+        name: 'My Custom Workflow',
+        description: 'Add a description',
+        steps: [
+            { name: 'hello', type: 'shell', config: { command: 'echo "Hello from custom workflow!"' } }
+        ]
+    }, null, 2);
+    document.getElementById('modal-error').style.display = 'none';
+    modalOverlay.classList.remove('hidden');
+});
+
+function closeModal() { modalOverlay.classList.add('hidden'); }
+document.getElementById('btn-modal-close').addEventListener('click', closeModal);
+document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+
+document.getElementById('btn-modal-save').addEventListener('click', async () => {
+    const name = document.getElementById('modal-wf-name').value.trim();
+    const description = document.getElementById('modal-wf-desc').value.trim();
+    const jsonText = document.getElementById('modal-wf-json').value.trim();
+    const modalErr = document.getElementById('modal-error');
+    
+    if (!name) { modalErr.textContent = 'Workflow name is required.'; modalErr.style.display = 'block'; return; }
+    let spec;
+    try { spec = JSON.parse(jsonText); } catch (e) { modalErr.textContent = 'Invalid JSON: ' + e.message; modalErr.style.display = 'block'; return; }
+    
+    modalErr.style.display = 'none';
+    const btn = document.getElementById('btn-modal-save');
+    btn.textContent = 'SAVING...';
+    
+    try {
+        const res = await authFetch(`${API_URL}/custom-workflows`, {
+            method: 'POST',
+            body: JSON.stringify({ name, description, spec })
+        });
+        const data = await res.json();
+        if (!res.ok) { modalErr.textContent = data.error || 'Failed to save.'; modalErr.style.display = 'block'; btn.textContent = 'SAVE WORKFLOW'; return; }
+        closeModal();
+        fetchCustomWorkflows();
+    } catch (e) { modalErr.textContent = 'Network error.'; modalErr.style.display = 'block'; }
+    btn.textContent = 'SAVE WORKFLOW';
+});
+
+// Init Unified UI
+window.addEventListener('load', async () => {
+    // Check for existing JWT
+    const token = getToken();
+    if (token) {
+        try {
+            const res = await authFetch(`${AUTH_URL}/me`);
+            if (res.ok) {
+                const data = await res.json();
+                onLoggedIn(data.displayName);
+            } else {
+                clearToken(); // Token expired/invalid
+            }
+        } catch (e) {
+            console.warn('Could not reach server for auth check.');
+        }
+    }
+    // Populate built-in sidebar always
+    populateBuiltinWorkflows();
+});
+
+function populateBuiltinWorkflows() {
+    if (!workflowNav) return;
+    workflowNav.innerHTML = '';
+    let index = 1;
+    const activeClass = 'bg-primary text-on-primary rounded-lg border-l-2 border-secondary';
+    const inactiveClass = 'rounded-lg text-on-primary-container hover:bg-primary/40 hover:text-on-primary transition-colors';
+
+    Object.keys(examples).forEach(key => {
+        const link = document.createElement('a');
+        link.href = '#';
+        link.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${key === 'rigorous-workflow' ? activeClass : inactiveClass}`;
+
+        let icon = 'account_tree';
+        if (key.includes('parallel')) icon = 'layers';
+        else if (key.includes('advanced')) icon = 'calculate';
+
+        link.innerHTML = `<span class="font-label-caps text-[10px] text-on-primary-container/60">0${index++} //</span><span class="material-symbols-outlined text-[16px]">${icon}</span><span>${examples[key].name || key}</span>`;
+
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            Array.from(workflowNav.children).forEach(child => {
+                child.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${inactiveClass}`;
+            });
+            link.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${activeClass}`;
+            editor.value = JSON.stringify(examples[key], null, 2);
+            validationErrors.classList.add('hidden');
+        });
+        workflowNav.appendChild(link);
+    });
+
+    // Load default
     if (examples['rigorous-workflow']) {
         editor.value = JSON.stringify(examples['rigorous-workflow'], null, 2);
     }
-});
+}
+
 
 // Load Examples (Hardcoded for demo, normally fetched)
 const examples = {
@@ -127,9 +375,8 @@ const examples = {
 validateBtn.addEventListener('click', async () => {
     try {
         const json = JSON.parse(editor.value);
-        const res = await fetch(`${API_URL}/workflows`, {
+        const res = await authFetch(`${API_URL}/workflows`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(json)
         });
         const data = await res.json();
@@ -141,7 +388,6 @@ validateBtn.addEventListener('click', async () => {
             validationErrors.style.background = 'rgba(16, 185, 129, 0.9)';
             validationErrors.innerText = '✓ Workflow is valid!';
             setTimeout(() => validationErrors.classList.add('hidden'), 2000);
-            
             buildDagLayout(json.steps);
         }
     } catch (e) {
@@ -153,17 +399,15 @@ executeBtn.addEventListener('click', async () => {
     try {
         const json = JSON.parse(editor.value);
         // Step 1: Create/Validate
-        let res = await fetch(`${API_URL}/workflows`, {
+        let res = await authFetch(`${API_URL}/workflows`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(json)
         });
         let data = await res.json();
-        if (!res.ok) return showErrors(data.details);
+        if (!res.ok) return showErrors(data.details || [data.error]);
         
         const workflowId = data.id;
         buildDagLayout(json.steps);
-        
         initExecutionUI();
         
         // Connect WS if not connected
@@ -172,7 +416,7 @@ executeBtn.addEventListener('click', async () => {
         }
         
         // Step 2: Execute
-        res = await fetch(`${API_URL}/workflows/${workflowId}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: "{}"});
+        res = await authFetch(`${API_URL}/workflows/${workflowId}/execute`, { method: 'POST', body: '{}' });
         data = await res.json();
         currentExecutionId = data.executionId;
         
@@ -487,7 +731,7 @@ function drawDag() {
 // History
 async function fetchHistory() {
     try {
-        const res = await fetch(`${API_URL}/executions`);
+        const res = await authFetch(`${API_URL}/executions`);
         const data = await res.json();
         const tbody = document.getElementById('history-tbody');
         if(!tbody) return;
