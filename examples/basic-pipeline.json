@@ -1,0 +1,10 @@
+{
+  "name": "Basic CI Pipeline",
+  "description": "Clone, build, test",
+  "variables": { "repo": "app.git" },
+  "steps": [
+      { "name": "clone", "type": "shell", "config": { "command": "echo 'Cloning...' && sleep 1" } },
+      { "name": "build", "type": "shell", "dependsOn": ["clone"], "config": { "command": "echo 'Building...' && sleep 2" } },
+      { "name": "test", "type": "shell", "dependsOn": ["build"], "config": { "command": "echo 'Testing...' && sleep 1" } }
+  ]
+}

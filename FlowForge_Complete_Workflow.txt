@@ -1,0 +1,574 @@
+================================================================================
+                    FLOWFORGE — WORKFLOW EXECUTION ENGINE
+                        Complete Project Workflow
+================================================================================
+
+1. PROJECT OVERVIEW
+================================================================================
+
+FlowForge is a lightweight, JSON-driven workflow execution engine that enables
+users to define complex automation pipelines as JSON payloads and execute them
+through a web-based interface with real-time feedback.
+
+Key Differentiators:
+  - JSON-first: Entire workflows are defined as human-readable JSON
+  - DAG Execution: Steps are topologically sorted; independent steps run in parallel
+  - Context Piping: Output from step A automatically flows into step B via templates
+  - Plugin Architecture: Extend with custom step types by dropping a JS file
+  - Real-Time Dashboard: Watch your workflow execute live with animated node graphs
+  - Conditional Logic: Steps can be skipped based on previous results
+
+Tech Stack:
+  - Backend: Node.js + Express.js
+  - WebSockets: ws library for real-time updates
+  - Frontend: Vanilla HTML/CSS/JS (no framework — lightweight)
+  - Execution: child_process (shell), node-fetch (REST APIs)
+
+
+2. COMPLETE FILE STRUCTURE
+================================================================================
+
+Nutanix-4/
+├── package.json                    # Project config and dependencies
+├── flowforge.config.js             # Global engine configuration
+├── README.md                       # Project documentation
+│
+├── src/
+│   ├── engine/
+│   │   ├── WorkflowEngine.js       # Core orchestrator
+│   │   ├── DAGResolver.js          # Topological sort & cycle detection
+│   │   ├── ContextManager.js       # Variable interpolation & state
+│   │   └── WorkflowValidator.js    # JSON schema validation
+│   │
+│   ├── executors/
+│   │   ├── ShellExecutor.js        # Shell command execution
+│   │   ├── RestApiExecutor.js      # HTTP/REST API calls
+│   │   ├── ConditionalExecutor.js  # If/else conditional logic
+│   │   └── PluginExecutor.js       # Dynamic plugin loading
+│   │
+│   └── server/
+│       ├── index.js                # Express app + WebSocket server
+│       └── WebSocketManager.js     # Real-time event broadcasting
+│
+├── plugins/
+│   ├── log.plugin.js               # Logging plugin (example)
+│   ├── delay.plugin.js             # Delay/sleep plugin (example)
+│   └── email.plugin.js             # Email notification (mock)
+│
+├── public/
+│   ├── index.html                  # Dashboard SPA
+│   ├── styles.css                  # Premium dark theme
+│   └── app.js                      # Client-side logic + DAG rendering
+│
+├── examples/
+│   ├── basic-pipeline.json         # Simple sequential workflow
+│   ├── parallel-build.json         # Parallel fan-out/fan-in
+│   └── conditional-deploy.json     # Conditional branching
+│
+└── tests/
+    ├── engine.test.js              # Core engine unit tests
+    ├── executors.test.js           # Executor unit tests
+    └── validator.test.js           # Validation tests
+
+
+3. JSON WORKFLOW SCHEMA SPECIFICATION
+================================================================================
+
+A workflow JSON has this structure:
+
+{
+  "name": "string (required) — Human-readable workflow name",
+  "description": "string (optional) — What this workflow does",
+  "variables": {
+    "key": "value pairs — Accessible via {{variables.key}}"
+  },
+  "steps": [
+    {
+      "name": "string (required) — Unique step identifier",
+      "type": "string (required) — One of: shell | rest | plugin",
+      "dependsOn": ["array of step names this step waits for"],
+      "if": "string (optional) — Condition to evaluate before running",
+      "retry": {
+        "maxAttempts": "number — How many times to retry on failure",
+        "backoffMs": "number — Milliseconds between retries"
+      },
+      "config": {
+        "...executor-specific configuration"
+      }
+    }
+  ],
+  "onFailure": {
+    "type": "string — Executor type for failure handler",
+    "config": { "...failure handler config" }
+  }
+}
+
+Shell Step Config:
+  {
+    "command": "string — The shell command to run",
+    "cwd": "string (optional) — Working directory",
+    "timeout": "number (optional) — Max execution time in ms",
+    "env": { "KEY": "VALUE" }
+  }
+
+REST API Step Config:
+  {
+    "method": "GET | POST | PUT | DELETE | PATCH",
+    "url": "string — The endpoint URL",
+    "headers": { "Header-Name": "value" },
+    "body": { "...request body (for POST/PUT/PATCH)" },
+    "queryParams": { "key": "value" },
+    "auth": {
+      "type": "bearer | basic",
+      "token": "string (for bearer)",
+      "username": "string (for basic)",
+      "password": "string (for basic)"
+    },
+    "timeout": "number (optional) — Request timeout in ms",
+    "expectedStatus": [200, 201]
+  }
+
+Plugin Step Config:
+  {
+    "pluginName": "string — Name of the plugin file (without .plugin.js)",
+    "...any additional config the plugin expects"
+  }
+
+
+4. EXECUTION FLOW (Step by Step)
+================================================================================
+
+Step 1: WORKFLOW SUBMISSION
+  - User submits JSON workflow via:
+    a) Web dashboard JSON editor → POST /api/workflows
+    b) Direct API call with curl/Postman
+  - Server receives JSON payload
+
+Step 2: VALIDATION
+  - WorkflowValidator checks:
+    ✓ Required fields present (name, steps)
+    ✓ Each step has unique name and valid type
+    ✓ dependsOn references point to existing steps
+    ✓ No circular dependencies
+    ✓ Config matches executor requirements
+  - Returns structured errors if invalid
+
+Step 3: STORAGE
+  - Workflow stored in-memory Map with UUID
+  - Returns workflow ID to client
+
+Step 4: EXECUTION TRIGGER
+  - User calls POST /api/workflows/:id/execute
+  - WorkflowEngine creates new execution context
+
+Step 5: DAG RESOLUTION
+  - DAGResolver performs topological sort on steps
+  - Groups steps into "levels":
+    Level 0: Steps with no dependencies (can run in parallel)
+    Level 1: Steps depending only on Level 0 (can run in parallel)
+    Level 2: Steps depending on Level 0 or 1 (can run in parallel)
+    ...and so on
+  - This ensures maximum parallelism while respecting dependencies
+
+Step 6: LEVEL-BY-LEVEL EXECUTION
+  For each level:
+    a) Check 'if' conditions for each step (ConditionalExecutor)
+    b) If condition is false → mark step as SKIPPED
+    c) If condition is true or absent → resolve template variables
+    d) Execute all steps in the level concurrently using Promise.all()
+    e) Each step runs through its type-specific executor:
+       - shell → ShellExecutor → spawns child_process
+       - rest → RestApiExecutor → makes HTTP request
+       - plugin → PluginExecutor → loads and runs plugin
+    f) Capture output, exitCode, duration for each step
+    g) Store results in ContextManager
+    h) Emit WebSocket events for real-time UI updates
+
+Step 7: RETRY HANDLING
+  - If a step fails and has retry config:
+    a) Wait backoffMs milliseconds
+    b) Re-execute the step
+    c) Repeat up to maxAttempts times
+    d) If all retries fail → mark as FAILED
+
+Step 8: FAILURE HANDLING
+  - If any step fails (after retries):
+    a) Mark dependent steps as CANCELLED
+    b) Execute onFailure handler if defined
+    c) Record failure details in execution log
+    d) Emit workflow:failed WebSocket event
+
+Step 9: COMPLETION
+  - All steps complete → emit workflow:complete
+  - Execution summary includes:
+    - Total duration
+    - Per-step status, output, duration
+    - Any errors encountered
+  - Dashboard shows final state with green/red/grey nodes
+
+
+5. TEMPLATE / VARIABLE INTERPOLATION SYSTEM
+================================================================================
+
+The ContextManager supports these template patterns:
+
+  {{variables.key}}        → Resolves from workflow-level variables
+  {{env.KEY}}              → Resolves from process environment variables
+  {{stepName.output}}      → Full stdout/response from a completed step
+  {{stepName.exitCode}}    → Exit code (shell) or status code (REST)
+  {{stepName.output.path}} → JSON path access for REST response bodies
+  {{_failedStep}}          → Name of the step that caused failure (in onFailure)
+
+Resolution happens just before step execution, so all referenced steps
+must be in a prior dependency level.
+
+Example Flow:
+  Step "build" outputs: "v2.3.1"
+  Step "deploy" has command: "deploy.sh {{build.output}}"
+  → Resolved command: "deploy.sh v2.3.1"
+
+
+6. PLUGIN API SPECIFICATION
+================================================================================
+
+To create a custom plugin, drop a file in the plugins/ directory:
+
+  Filename: <name>.plugin.js
+
+  Required exports:
+  ─────────────────────────────────────────────────────
+  module.exports = {
+    name: 'my-plugin',        // Must match filename prefix
+    description: 'What it does',
+    
+    // Validate step config before execution
+    validate(config) {
+      if (!config.requiredField) {
+        throw new Error('requiredField is missing');
+      }
+    },
+    
+    // Execute the step
+    async execute(config, context) {
+      // config = step's config object from JSON
+      // context = { getOutput(stepName), getVariable(key), log(msg) }
+      
+      const result = await doSomething(config);
+      
+      return {
+        output: result,    // Stored as {{stepName.output}}
+        exitCode: 0        // 0 = success, non-zero = failure
+      };
+    }
+  };
+  ─────────────────────────────────────────────────────
+
+The engine auto-discovers plugins at startup by scanning the plugins/ dir.
+
+
+7. API ENDPOINTS
+================================================================================
+
+POST /api/workflows
+  Body: { ...workflow JSON }
+  Response: { id: "uuid", name: "...", status: "validated" }
+
+GET /api/workflows
+  Response: [{ id, name, description, createdAt, stepCount }]
+
+GET /api/workflows/:id
+  Response: { ...full workflow JSON with id }
+
+POST /api/workflows/:id/execute
+  Body: { variables: { ...override variables } }  (optional)
+  Response: { executionId: "uuid", status: "running" }
+
+GET /api/executions/:id
+  Response: {
+    executionId, workflowId, status,
+    startTime, endTime, duration,
+    steps: [{ name, status, output, exitCode, duration, retries }]
+  }
+
+GET /api/executions
+  Response: [{ executionId, workflowName, status, startTime, duration }]
+
+WebSocket: ws://localhost:3000/ws
+  Events sent to clients:
+    { type: "step:start", data: { executionId, stepName, timestamp } }
+    { type: "step:log", data: { executionId, stepName, line } }
+    { type: "step:complete", data: { executionId, stepName, output, exitCode } }
+    { type: "step:error", data: { executionId, stepName, error, retry } }
+    { type: "step:skipped", data: { executionId, stepName, reason } }
+    { type: "workflow:complete", data: { executionId, summary } }
+    { type: "workflow:failed", data: { executionId, failedStep, error } }
+
+
+8. WEB DASHBOARD FEATURES
+================================================================================
+
+The dashboard is a single-page app with three main views:
+
+VIEW 1: WORKFLOW EDITOR
+  - JSON editor with syntax highlighting (built with contenteditable + regex)
+  - "Validate" button → calls POST /api/workflows (dry-run)
+  - "Load Example" dropdown → pre-fills with sample workflows
+  - DAG preview renders as the JSON is typed (live parsing)
+
+VIEW 2: LIVE EXECUTION
+  - Animated DAG graph (Canvas-based):
+    · Grey nodes = pending
+    · Blue pulsing nodes = running
+    · Green nodes = completed
+    · Red nodes = failed
+    · Striped grey nodes = skipped
+  - Edges animate to show data flow direction
+  - Live log panel streams stdout/stderr per step
+  - Progress bar with percentage complete
+  - Execution timer showing elapsed time
+
+VIEW 3: HISTORY
+  - Table of past executions with status, duration, timestamp
+  - Click to expand and see per-step details
+  - Re-run button to re-execute a past workflow
+
+DESIGN LANGUAGE:
+  - Dark theme (#0a0a0f background) with glassmorphism panels
+  - Accent gradient: purple (#8b5cf6) → cyan (#06b6d4)
+  - Font: Inter (Google Fonts)
+  - Micro-animations on all interactive elements
+  - Responsive: works on desktop and tablet
+
+
+9. SAMPLE WORKFLOWS
+================================================================================
+
+SAMPLE 1: Basic CI Pipeline
+─────────────────────────────────────────────────
+{
+  "name": "Basic CI Pipeline",
+  "description": "Clone, build, test, and report",
+  "variables": {
+    "repo": "https://github.com/example/app.git"
+  },
+  "steps": [
+    {
+      "name": "clone",
+      "type": "shell",
+      "config": {
+        "command": "echo 'Cloning {{variables.repo}}...' && sleep 1 && echo 'Done'"
+      }
+    },
+    {
+      "name": "install",
+      "type": "shell",
+      "dependsOn": ["clone"],
+      "config": {
+        "command": "echo 'Installing dependencies...' && sleep 2 && echo 'Installed 142 packages'"
+      }
+    },
+    {
+      "name": "test",
+      "type": "shell",
+      "dependsOn": ["install"],
+      "config": {
+        "command": "echo 'Running tests...' && sleep 1 && echo '24 tests passed'"
+      },
+      "retry": { "maxAttempts": 2, "backoffMs": 1000 }
+    },
+    {
+      "name": "report",
+      "type": "rest",
+      "dependsOn": ["test"],
+      "config": {
+        "method": "POST",
+        "url": "https://httpbin.org/post",
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "status": "success",
+          "tests": "{{test.output}}"
+        }
+      }
+    }
+  ]
+}
+
+SAMPLE 2: Parallel Build with Conditional Deploy
+─────────────────────────────────────────────────
+{
+  "name": "Parallel Build Pipeline",
+  "description": "Build frontend and backend in parallel, then deploy",
+  "steps": [
+    {
+      "name": "lint",
+      "type": "shell",
+      "config": {
+        "command": "echo 'Linting code...' && sleep 1 && echo 'No issues found'"
+      }
+    },
+    {
+      "name": "build_frontend",
+      "type": "shell",
+      "dependsOn": ["lint"],
+      "config": {
+        "command": "echo 'Building React app...' && sleep 2 && echo 'Bundle: 245KB'"
+      }
+    },
+    {
+      "name": "build_backend",
+      "type": "shell",
+      "dependsOn": ["lint"],
+      "config": {
+        "command": "echo 'Compiling server...' && sleep 3 && echo 'Server binary ready'"
+      }
+    },
+    {
+      "name": "integration_tests",
+      "type": "shell",
+      "dependsOn": ["build_frontend", "build_backend"],
+      "config": {
+        "command": "echo 'Running integration tests...' && sleep 2 && echo 'All 18 tests passed'"
+      }
+    },
+    {
+      "name": "deploy",
+      "type": "shell",
+      "dependsOn": ["integration_tests"],
+      "if": "{{integration_tests.exitCode}} == 0",
+      "config": {
+        "command": "echo 'Deploying to production...' && sleep 1 && echo 'Deployed successfully'"
+      }
+    },
+    {
+      "name": "notify_team",
+      "type": "rest",
+      "dependsOn": ["deploy"],
+      "config": {
+        "method": "POST",
+        "url": "https://httpbin.org/post",
+        "body": {
+          "message": "Deployment complete",
+          "frontend": "{{build_frontend.output}}",
+          "backend": "{{build_backend.output}}"
+        }
+      }
+    }
+  ],
+  "onFailure": {
+    "type": "shell",
+    "config": {
+      "command": "echo 'ALERT: Pipeline failed at step {{_failedStep}}'"
+    }
+  }
+}
+
+SAMPLE 3: API Health Check Chain
+─────────────────────────────────────────────────
+{
+  "name": "API Health Check",
+  "description": "Check multiple service endpoints and report",
+  "variables": {
+    "base_url": "https://httpbin.org"
+  },
+  "steps": [
+    {
+      "name": "check_main",
+      "type": "rest",
+      "config": {
+        "method": "GET",
+        "url": "{{variables.base_url}}/get",
+        "timeout": 5000,
+        "expectedStatus": [200]
+      }
+    },
+    {
+      "name": "check_auth",
+      "type": "rest",
+      "config": {
+        "method": "GET",
+        "url": "{{variables.base_url}}/headers",
+        "headers": { "Authorization": "Bearer test-token" },
+        "timeout": 5000
+      }
+    },
+    {
+      "name": "log_results",
+      "type": "plugin",
+      "dependsOn": ["check_main", "check_auth"],
+      "config": {
+        "pluginName": "log",
+        "message": "Health check complete. Main: {{check_main.exitCode}}, Auth: {{check_auth.exitCode}}"
+      }
+    }
+  ]
+}
+
+
+10. DEMO SCRIPT (Presentation Flow)
+================================================================================
+
+SLIDE 1: Problem Statement (30 sec)
+  "Automation pipelines are complex. Jenkins is 2GB. Airflow needs Python.
+   What if you could define and run workflows with just JSON?"
+
+SLIDE 2: Live Demo — Dashboard Tour (1 min)
+  - Show the dark-themed dashboard
+  - Point out the three views
+  - Show the JSON editor with syntax highlighting
+
+SLIDE 3: Execute a Workflow (2 min)
+  - Load "Parallel Build Pipeline" example
+  - Click Execute
+  - Show the DAG animating in real-time:
+    · lint (blue → green)
+    · build_frontend + build_backend (both blue simultaneously → green)
+    · integration_tests (blue → green)
+    · deploy (conditional check → blue → green)
+  - Show live log streaming
+  - Show final execution summary
+
+SLIDE 4: REST API Demo (1 min)
+  - Show API health check workflow executing
+  - Point out the real HTTP calls to httpbin.org
+  - Show response data flowing between steps
+
+SLIDE 5: Extensibility — Plugin System (1 min)
+  - Open a plugin file, show the simple API
+  - "To add Slack notifications, just drop a file here"
+  - Show the plugin auto-discovered at startup
+
+SLIDE 6: Architecture & Innovation (1 min)
+  - Show the architecture diagram
+  - Highlight: DAG parallelism, context piping, conditional execution
+  - "All of this from a single JSON file"
+
+CLOSE: "FlowForge — Define it. Execute it. Watch it flow."
+
+
+11. INNOVATION HIGHLIGHTS (For Judges)
+================================================================================
+
+1. TEMPLATE ENGINE: {{step.output.path}} syntax enables zero-code data piping
+   between heterogeneous step types (shell stdout → REST body → plugin input)
+
+2. DAG PARALLELISM: Automatic inference of parallelizable steps from the
+   dependency graph. No manual "parallel" blocks needed.
+
+3. LIVE VISUALIZATION: Real-time Canvas-based DAG rendering with per-node
+   state animations. Not just logs — you can *see* your workflow execute.
+
+4. PLUGIN DROP-IN: One file, one export, auto-discovered. The simplest
+   plugin API possible for a workflow engine.
+
+5. CONDITIONAL BRANCHING: Runtime decisions based on prior step outputs
+   enable truly dynamic workflows, not just static pipelines.
+
+6. FAULT TOLERANCE: Per-step retry with exponential backoff + workflow-level
+   failure handlers ensure graceful degradation.
+
+7. ZERO DEPENDENCIES FRONTEND: The entire dashboard is vanilla HTML/CSS/JS.
+   No React, no Vue, no build step. Just open index.html.
+
+================================================================================
+                            END OF WORKFLOW DOCUMENT
+================================================================================

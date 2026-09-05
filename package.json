@@ -1,0 +1,21 @@
+{
+  "name": "flowforge",
+  "version": "1.0.0",
+  "description": "FlowForge — A lightweight, JSON-driven workflow execution engine with real-time dashboard",
+  "type": "module",
+  "main": "src/server/index.js",
+  "scripts": {
+    "start": "node src/server/index.js",
+    "dev": "node src/server/index.js",
+    "test": "node tests/engine.test.js && node tests/executors.test.js && node tests/validator.test.js"
+  },
+  "keywords": ["workflow", "automation", "pipeline", "dag", "execution-engine"],
+  "author": "FlowForge Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "uuid": "^9.0.0",
+    "cors": "^2.8.5"
+  }
+}
