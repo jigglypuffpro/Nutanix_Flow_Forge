@@ -135,18 +135,20 @@ app.post('/api/workflows/:id/execute', requireAuth, async (req, res) => {
     inMemoryExecutions.set(engine.executionId, { ...execData, duration: null });
   }
 
-  engine.execute(variables).then(async summary => {
-    if (isDbConnected()) {
-      await ExecutionModel.findOneAndUpdate(
-        { executionId: summary.executionId },
-        { status: summary.status, duration: summary.duration, steps: summary.steps || [] },
-        { new: true }
-      ).catch(console.error);
-    } else {
-      const existing = inMemoryExecutions.get(summary.executionId) || {};
-      inMemoryExecutions.set(summary.executionId, { ...existing, ...summary });
-    }
-  }).catch(err => console.error('Engine execution failed:', err));
+  setTimeout(() => {
+    engine.execute(variables).then(async summary => {
+      if (isDbConnected()) {
+        await ExecutionModel.findOneAndUpdate(
+          { executionId: summary.executionId },
+          { status: summary.status, duration: summary.duration, steps: summary.steps || [] },
+          { new: true }
+        ).catch(console.error);
+      } else {
+        const existing = inMemoryExecutions.get(summary.executionId) || {};
+        inMemoryExecutions.set(summary.executionId, { ...existing, ...summary });
+      }
+    }).catch(err => console.error('Engine execution failed:', err));
+  }, 100);
 
   res.status(202).json({ executionId: engine.executionId, status: 'running' });
 });

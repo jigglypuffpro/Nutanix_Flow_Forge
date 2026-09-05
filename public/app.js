@@ -412,7 +412,7 @@ executeBtn.addEventListener('click', async () => {
         
         // Connect WS if not connected
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-            connectWebSocket();
+            await connectWebSocket();
         }
         
         // Step 2: Execute
@@ -437,22 +437,26 @@ function showErrors(errors) {
 
 // WebSocket & Live Updates
 function connectWebSocket() {
-    ws = new WebSocket('ws://localhost:3000');
-    const wsStatusText = document.getElementById('ws-status-text');
-    
-    ws.onopen = () => {
-        if (wsStatusText) {
-            wsStatusText.className = 'inline-flex items-center gap-space-4 font-label-caps text-label-caps text-tertiary-fixed';
-            wsStatusText.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed inline-block animate-pulse" id="ws-status-dot"></span>LIVE`;
-        }
-    };
-    
-    ws.onclose = () => {
-        if (wsStatusText) {
-            wsStatusText.className = 'inline-flex items-center gap-space-4 font-label-caps text-label-caps text-error';
-            wsStatusText.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-error inline-block" id="ws-status-dot"></span>DISCONNECTED`;
-        }
-    };
+    return new Promise((resolve, reject) => {
+        ws = new WebSocket('ws://localhost:3000');
+        const wsStatusText = document.getElementById('ws-status-text');
+        
+        ws.onopen = () => {
+            if (wsStatusText) {
+                wsStatusText.className = 'inline-flex items-center gap-space-4 font-label-caps text-label-caps text-tertiary-fixed';
+                wsStatusText.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed inline-block animate-pulse" id="ws-status-dot"></span>LIVE`;
+            }
+            resolve();
+        };
+        
+        ws.onerror = (e) => reject(e);
+        
+        ws.onclose = () => {
+            if (wsStatusText) {
+                wsStatusText.className = 'inline-flex items-center gap-space-4 font-label-caps text-label-caps text-error';
+                wsStatusText.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-error inline-block" id="ws-status-dot"></span>DISCONNECTED`;
+            }
+        };
 
     ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
@@ -494,6 +498,7 @@ function connectWebSocket() {
                 break;
         }
     };
+  });
 }
 
 function initExecutionUI() {
