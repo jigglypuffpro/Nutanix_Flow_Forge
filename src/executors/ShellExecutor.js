@@ -15,7 +15,13 @@ class ShellExecutor {
       }
 
       const cwd = this.config.cwd || process.cwd();
-      const env = { ...process.env, ...(this.config.env || {}) };
+      const cleanEnv = { ...process.env };
+      for (const key in cleanEnv) {
+        if (key.toLowerCase().startsWith('npm_') || key.toLowerCase().startsWith('npm_config_')) {
+          delete cleanEnv[key];
+        }
+      }
+      const env = { ...cleanEnv, ...(this.config.env || {}) };
       const timeout = this.config.timeout || 0; // 0 means no timeout
 
       let childProcess;
