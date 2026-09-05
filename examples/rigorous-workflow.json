@@ -1,0 +1,62 @@
+{
+  "name": "Rigorous System & API Workflow",
+  "description": "Executes real shell commands to prepare a directory, fetches real JSON data from a REST API, parses it using Python, and uses plugins to log and mock-email the result before cleaning up.",
+  "variables": {
+    "api_endpoint": "https://jsonplaceholder.typicode.com/users/1",
+    "temp_dir": "/tmp/flowforge_test"
+  },
+  "steps": [
+    {
+      "name": "setup_environment",
+      "type": "shell",
+      "config": {
+        "command": "mkdir -p {{variables.temp_dir}} && echo 'Environment ready at {{variables.temp_dir}}'"
+      }
+    },
+    {
+      "name": "fetch_user_data",
+      "type": "rest",
+      "dependsOn": ["setup_environment"],
+      "config": {
+        "method": "GET",
+        "url": "{{variables.api_endpoint}}"
+      }
+    },
+    {
+      "name": "process_data",
+      "type": "shell",
+      "dependsOn": ["fetch_user_data"],
+      "config": {
+        "command": "cat << 'EOF' > {{variables.temp_dir}}/process.py\nimport json\nimport sys\n\ntry:\n    data = json.loads(sys.argv[1])\n    print(f\"{data['name']} works at {data['company']['name']}\")\nexcept Exception as e:\n    print(f\"Error parsing data: {e}\")\n    sys.exit(1)\nEOF\npython3 {{variables.temp_dir}}/process.py '{{fetch_user_data.output}}'"
+      }
+    },
+    {
+      "name": "log_result",
+      "type": "plugin",
+      "dependsOn": ["process_data"],
+      "config": {
+        "pluginName": "log",
+        "message": "Data processed successfully: {{process_data.output}}"
+      }
+    },
+    {
+      "name": "send_mock_email",
+      "type": "plugin",
+      "dependsOn": ["process_data"],
+      "config": {
+        "pluginName": "email",
+        "to": "admin@flowforge.local",
+        "subject": "User Processed",
+        "body": "The result from the API and Python parsing is: {{process_data.output}}"
+      }
+    },
+    {
+      "name": "cleanup",
+      "type": "shell",
+      "dependsOn": ["log_result", "send_mock_email"],
+      "config": {
+        "command": "rm -rf {{variables.temp_dir}} && echo 'Cleanup complete'"
+      }
+    }
+  ]
+}

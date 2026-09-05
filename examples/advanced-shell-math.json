@@ -1,0 +1,41 @@
+{
+  "name": "Advanced Math & Shell Operations",
+  "description": "Demonstrates arithmetic, string manipulation, parallel calculations, context piping, and conditions",
+  "variables": {
+    "numA": 48,
+    "numB": 12
+  },
+  "steps": [
+    {
+      "name": "initial_math",
+      "type": "shell",
+      "config": {
+        "command": "A={{variables.numA}}; B={{variables.numB}}; SUM=$((A + B)); DIFF=$((A - B)); PROD=$((A * B)); QUOT=$((A / B)); echo \"Base: A=$A, B=$B | Sum=$SUM, Diff=$DIFF, Product=$PROD, Quotient=$QUOT\"; echo $SUM"
+      }
+    },
+    {
+      "name": "parallel_branch_square",
+      "type": "shell",
+      "dependsOn": ["initial_math"],
+      "config": {
+        "command": "VAL=$(echo \"{{initial_math.output}}\" | tail -n 1); SQ=$((VAL * VAL)); echo \"[Square Branch] Square of $VAL is $SQ\"; echo $SQ"
+      }
+    },
+    {
+      "name": "parallel_branch_stats",
+      "type": "shell",
+      "dependsOn": ["initial_math"],
+      "config": {
+        "command": "python3 -c \"import math; v=int('''{{initial_math.output}}'''.split()[-1]); print(f'[Stats Branch] Sqrt={math.isqrt(v)}, Factorial(5)={math.factorial(5)}, Hex={hex(v)}')\""
+      }
+    },
+    {
+      "name": "aggregate_results",
+      "type": "shell",
+      "dependsOn": ["parallel_branch_square", "parallel_branch_stats"],
+      "config": {
+        "command": "echo \"=== FINAL REPORT ===\"; echo \"Raw Initial Output: {{initial_math.output}}\"; echo \"Square Result: {{parallel_branch_square.output}}\"; echo \"Stats Output: {{parallel_branch_stats.output}}\"; echo \"All calculations completed successfully!\""
+      }
+    }
+  ]
+}

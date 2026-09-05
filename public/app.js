@@ -3,37 +3,67 @@ let ws = null;
 let currentExecutionId = null;
 let dagNodes = [];
 let dagEdges = [];
+let dagWidth = 0;
+let dagHeight = 0;
 
 // DOM Elements
-const views = document.querySelectorAll('.view');
-const navBtns = document.querySelectorAll('.nav-btn');
 const editor = document.getElementById('json-editor');
 const validateBtn = document.getElementById('btn-validate');
-const executeBtn = document.getElementById('btn-execute');
+const executeBtn = document.getElementById('btn-exec');
 const validationErrors = document.getElementById('validation-errors');
-const exampleSelect = document.getElementById('example-select');
+const workflowNav = document.getElementById('workflow-nav');
 const logsContainer = document.getElementById('logs-container');
+const badgeContainer = document.getElementById('exec-status-container');
+const badgeDot = document.getElementById('exec-status-dot');
 const badge = document.getElementById('exec-status-badge');
+const badgeSub = document.getElementById('exec-status-sub');
 const canvas = document.getElementById('dag-canvas');
 const ctx = canvas.getContext('2d');
+const headerProjectName = document.getElementById('header-project-name');
+const headerRunId = document.getElementById('header-run-id');
+const dagTitle = document.getElementById('dag-title');
 let animationFrameId;
 
-// Navigation
-navBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        navBtns.forEach(b => b.classList.remove('active'));
-        views.forEach(v => v.classList.remove('active'));
+// Init Unified UI
+window.addEventListener('load', () => {
+    fetchHistory();
+    // Populate sidebar
+    if (workflowNav) {
+        workflowNav.innerHTML = '';
+        let index = 1;
+        const activeClass = 'bg-primary text-on-primary rounded-lg border-l-2 border-secondary';
+        const inactiveClass = 'rounded-lg text-on-primary-container hover:bg-primary/40 hover:text-on-primary transition-colors';
         
-        btn.classList.add('active');
-        document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
-        
-        if (btn.dataset.view === 'execution' && dagNodes.length > 0) {
-            resizeCanvas();
-        }
-        if (btn.dataset.view === 'history') {
-            fetchHistory();
-        }
-    });
+        Object.keys(examples).forEach(key => {
+            const link = document.createElement('a');
+            link.href = '#';
+            link.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${key === 'rigorous-workflow' ? activeClass : inactiveClass}`;
+            
+            let icon = 'account_tree';
+            if (key.includes('parallel')) icon = 'layers';
+            else if (key.includes('etl')) icon = 'database';
+            
+            link.innerHTML = `<span class="font-label-caps text-[10px] text-on-primary-container/60">0${index++} //</span><span class="material-symbols-outlined text-[16px]">${icon}</span><span>${examples[key].name || key}</span>`;
+            
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Update active state
+                Array.from(workflowNav.children).forEach(child => {
+                    child.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${inactiveClass}`;
+                });
+                link.className = `flex items-center gap-space-8 px-space-8 py-space-8 font-code-sm text-code-sm ${activeClass}`;
+                
+                editor.value = JSON.stringify(examples[key], null, 2);
+                validationErrors.classList.add('hidden');
+            });
+            workflowNav.appendChild(link);
+        });
+    }
+
+    // Load rigorous workflow by default
+    if (examples['rigorous-workflow']) {
+        editor.value = JSON.stringify(examples['rigorous-workflow'], null, 2);
+    }
 });
 
 // Load Examples (Hardcoded for demo, normally fetched)
@@ -64,15 +94,34 @@ const examples = {
             { "name": "deploy", "type": "shell", "dependsOn": ["test"], "if": "{{test.exitCode}} == 0", "config": { "command": "echo 'Deploying!'" } },
             { "name": "rollback", "type": "shell", "dependsOn": ["test"], "if": "{{test.exitCode}} != 0", "config": { "command": "echo 'Rolling back!'" } }
         ]
+    },
+    'advanced-math': {
+        "name": "Advanced Math & Shell Operations",
+        "description": "Demonstrates arithmetic, parallel calculations, context piping, and aggregate reporting",
+        "variables": { "numA": 48, "numB": 12 },
+        "steps": [
+            { "name": "initial_math", "type": "shell", "config": { "command": "A={{variables.numA}}; B={{variables.numB}}; SUM=$((A + B)); DIFF=$((A - B)); PROD=$((A * B)); QUOT=$((A / B)); echo \"Base: A=$A, B=$B | Sum=$SUM, Diff=$DIFF, Product=$PROD, Quotient=$QUOT\"; echo $SUM" } },
+            { "name": "parallel_branch_square", "type": "shell", "dependsOn": ["initial_math"], "config": { "command": "VAL=$(echo \"{{initial_math.output}}\" | tail -n 1); SQ=$((VAL * VAL)); echo \"[Square Branch] Square of $VAL is $SQ\"; echo $SQ" } },
+            { "name": "parallel_branch_stats", "type": "shell", "dependsOn": ["initial_math"], "config": { "command": "python3 -c \"import math; v=int('''{{initial_math.output}}'''.split()[-1]); print(f'[Stats Branch] Sqrt={math.isqrt(v)}, Factorial(5)={math.factorial(5)}, Hex={hex(v)}')\"" } },
+            { "name": "aggregate_results", "type": "shell", "dependsOn": ["parallel_branch_square", "parallel_branch_stats"], "config": { "command": "echo \"=== FINAL REPORT ===\"; echo \"Raw Initial Output: {{initial_math.output}}\"; echo \"Square Result: {{parallel_branch_square.output}}\"; echo \"Stats Output: {{parallel_branch_stats.output}}\"; echo \"All calculations completed successfully!\"" } }
+        ]
+    },
+    'rigorous-workflow': {
+        "name": "Rigorous System & API Workflow",
+        "description": "Executes real shell commands to prepare a directory, fetches real JSON data from a REST API, parses it using Python, and uses plugins to log and mock-email the result before cleaning up.",
+        "variables": { "api_endpoint": "https://jsonplaceholder.typicode.com/users/1", "temp_dir": "/tmp/flowforge_test" },
+        "steps": [
+            { "name": "setup_environment", "type": "shell", "config": { "command": "mkdir -p {{variables.temp_dir}} && echo 'Environment ready at {{variables.temp_dir}}'" } },
+            { "name": "fetch_user_data", "type": "rest", "dependsOn": ["setup_environment"], "config": { "method": "GET", "url": "{{variables.api_endpoint}}" } },
+            { "name": "process_data", "type": "shell", "dependsOn": ["fetch_user_data"], "config": { "command": "cat << 'EOF' > {{variables.temp_dir}}/process.py\nimport json\nimport sys\n\ntry:\n    data = json.loads(sys.argv[1])\n    print(f\"{data['name']} works at {data['company']['name']}\")\nexcept Exception as e:\n    print(f\"Error parsing data: {e}\")\n    sys.exit(1)\nEOF\npython3 {{variables.temp_dir}}/process.py '{{fetch_user_data.output}}'" } },
+            { "name": "log_result", "type": "plugin", "dependsOn": ["process_data"], "config": { "pluginName": "log", "message": "Data processed successfully: {{process_data.output}}" } },
+            { "name": "send_mock_email", "type": "plugin", "dependsOn": ["process_data"], "config": { "pluginName": "email", "to": "admin@flowforge.local", "subject": "User Processed", "body": "The result from the API and Python parsing is: {{process_data.output}}" } },
+            { "name": "cleanup", "type": "shell", "dependsOn": ["log_result", "send_mock_email"], "config": { "command": "rm -rf {{variables.temp_dir}} && echo 'Cleanup complete'" } }
+        ]
     }
 };
 
-exampleSelect.addEventListener('change', (e) => {
-    if (e.target.value && examples[e.target.value]) {
-        editor.value = JSON.stringify(examples[e.target.value], null, 2);
-        validationErrors.classList.add('hidden');
-    }
-});
+
 
 // Editor Actions
 validateBtn.addEventListener('click', async () => {
@@ -115,8 +164,6 @@ executeBtn.addEventListener('click', async () => {
         const workflowId = data.id;
         buildDagLayout(json.steps);
         
-        // Switch view
-        document.querySelector('[data-view="execution"]').click();
         initExecutionUI();
         
         // Connect WS if not connected
@@ -129,6 +176,10 @@ executeBtn.addEventListener('click', async () => {
         data = await res.json();
         currentExecutionId = data.executionId;
         
+        if (headerRunId) headerRunId.innerText = `RUN #${currentExecutionId.split('-')[0].toUpperCase()}`;
+        if (headerProjectName && json.name) headerProjectName.innerText = json.name.toUpperCase();
+        
+        fetchHistory();
     } catch (e) {
         showErrors(['Error starting execution: ' + e.message]);
     }
@@ -143,6 +194,22 @@ function showErrors(errors) {
 // WebSocket & Live Updates
 function connectWebSocket() {
     ws = new WebSocket('ws://localhost:3000');
+    const wsStatusText = document.getElementById('ws-status-text');
+    
+    ws.onopen = () => {
+        if (wsStatusText) {
+            wsStatusText.className = 'inline-flex items-center gap-space-4 font-label-caps text-label-caps text-tertiary-fixed';
+            wsStatusText.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed inline-block animate-pulse" id="ws-status-dot"></span>LIVE`;
+        }
+    };
+    
+    ws.onclose = () => {
+        if (wsStatusText) {
+            wsStatusText.className = 'inline-flex items-center gap-space-4 font-label-caps text-label-caps text-error';
+            wsStatusText.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-error inline-block" id="ws-status-dot"></span>DISCONNECTED`;
+        }
+    };
+
     ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.data.executionId !== currentExecutionId) return; // Ignore other executions
@@ -174,10 +241,12 @@ function connectWebSocket() {
             case 'workflow:complete':
                 updateBadge('completed');
                 addLog('SYSTEM', 'Workflow completed successfully', 'sys');
+                fetchHistory();
                 break;
             case 'workflow:failed':
                 updateBadge('failed');
                 addLog('SYSTEM', `Workflow failed at step: ${msg.data.failedStep}`, 'err');
+                fetchHistory();
                 break;
         }
     };
@@ -185,26 +254,48 @@ function connectWebSocket() {
 
 function initExecutionUI() {
     logsContainer.innerHTML = '';
-    badge.className = 'badge idle';
-    badge.innerText = 'Pending';
+    updateBadge('pending');
     dagNodes.forEach(n => n.status = 'pending');
     drawDag();
 }
 
 function updateBadge(status) {
-    badge.className = `badge ${status}`;
-    badge.innerText = status;
+    if (!badgeContainer) return;
+    badge.innerText = status.toUpperCase();
+    badgeContainer.className = 'flex items-center gap-space-4 px-space-8 py-space-2 rounded-DEFAULT';
+    badgeDot.className = 'w-2 h-2 rounded-DEFAULT animate-pulse';
+    
+    if (status === 'running') {
+        badgeContainer.classList.add('bg-secondary/10');
+        badgeDot.classList.add('bg-secondary');
+        badge.className = 'font-label-caps text-label-caps text-secondary tracking-wider font-bold';
+    } else if (status === 'completed') {
+        badgeContainer.classList.add('bg-tertiary-fixed/30');
+        badgeDot.classList.add('bg-tertiary-fixed-variant');
+        badgeDot.classList.remove('animate-pulse');
+        badge.className = 'font-label-caps text-label-caps text-tertiary-fixed-variant tracking-wider font-bold';
+    } else if (status === 'failed') {
+        badgeContainer.classList.add('bg-error/10');
+        badgeDot.classList.add('bg-error');
+        badgeDot.classList.remove('animate-pulse');
+        badge.className = 'font-label-caps text-label-caps text-error tracking-wider font-bold';
+    } else {
+        badgeContainer.classList.add('bg-surface-variant');
+        badgeDot.classList.add('bg-outline-variant');
+        badgeDot.classList.remove('animate-pulse');
+        badge.className = 'font-label-caps text-label-caps text-outline tracking-wider font-bold';
+    }
 }
 
 function addLog(step, text, type = 'normal') {
     const div = document.createElement('div');
-    div.className = 'log-line';
+    div.className = 'text-outline font-mono text-[10.5px] leading-relaxed';
     const time = new Date().toLocaleTimeString();
     
-    let content = `<span class="time">[${time}]</span> <span class="step">[${step}]</span> `;
-    if (type === 'sys') content += `<span class="log-sys">${text}</span>`;
-    else if (type === 'err') content += `<span class="log-err">${text}</span>`;
-    else content += `<span>${text}</span>`;
+    let content = `[${time}] <span class="font-semibold text-on-surface-variant">[${step}]</span> `;
+    if (type === 'sys') content += `<span class="text-secondary font-semibold">${text}</span>`;
+    else if (type === 'err') content += `<span class="text-error font-semibold">${text}</span>`;
+    else content += `<span class="text-on-surface">${text}</span>`;
     
     div.innerHTML = content;
     logsContainer.appendChild(div);
@@ -213,6 +304,7 @@ function addLog(step, text, type = 'normal') {
 
 // DAG Canvas Rendering
 function buildDagLayout(steps) {
+    if (dagTitle) dagTitle.innerText = `DIRECTED ACYCLIC GRAPH (${steps.length} NODES)`;
     dagNodes = [];
     dagEdges = [];
     const levels = {};
@@ -251,18 +343,28 @@ function buildDagLayout(steps) {
     const paddingY = 80;
     const startX = 100;
     const startY = 100;
+    
+    let maxX = 0;
+    let maxY = 0;
 
     levelGroups.forEach((group, lx) => {
         group.forEach((name, ly) => {
+            const nx = startX + lx * paddingX;
+            const ny = startY + ly * paddingY;
+            if (nx > maxX) maxX = nx;
+            if (ny > maxY) maxY = ny;
             dagNodes.push({
                 id: name,
-                x: startX + lx * paddingX,
-                y: startY + ly * paddingY,
+                x: nx,
+                y: ny,
                 radius: 25,
                 status: 'pending' // pending, running, completed, failed, skipped
             });
         });
     });
+    
+    dagWidth = maxX + 100;
+    dagHeight = maxY + 100;
 
     // Edges
     steps.forEach(s => {
@@ -278,15 +380,13 @@ function buildDagLayout(steps) {
 }
 
 function resizeCanvas() {
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
+    canvas.width = Math.max(canvas.parentElement.clientWidth, dagWidth);
+    canvas.height = Math.max(canvas.parentElement.clientHeight, dagHeight);
     drawDag();
 }
 
 window.addEventListener('resize', () => {
-    if (document.getElementById('view-execution').classList.contains('active')) {
-        resizeCanvas();
-    }
+    resizeCanvas();
 });
 
 function updateNodeStatus(id, status) {
@@ -319,9 +419,9 @@ function drawDag() {
         const cpX = (edge.from.x + edge.to.x) / 2;
         ctx.bezierCurveTo(cpX, edge.from.y, cpX, edge.to.y, edge.to.x, edge.to.y);
         
-        let strokeColor = 'rgba(255,255,255,0.2)';
-        if (edge.from.status === 'completed') strokeColor = 'rgba(16, 185, 129, 0.5)';
-        if (edge.from.status === 'failed') strokeColor = 'rgba(239, 68, 68, 0.5)';
+        let strokeColor = '#c6c6cd'; // outline-variant
+        if (edge.from.status === 'completed') strokeColor = '#5d9a7c'; // on-tertiary-container
+        if (edge.from.status === 'failed') strokeColor = '#ba1a1a'; // error
         
         ctx.strokeStyle = strokeColor;
         ctx.stroke();
@@ -341,7 +441,7 @@ function drawDag() {
             const pulse = Math.sin(pulseOffset) * 5 + 5;
             ctx.beginPath();
             ctx.arc(node.x, node.y, node.radius + pulse, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+            ctx.fillStyle = 'rgba(51, 98, 139, 0.2)'; // secondary with opacity
             ctx.fill();
         }
 
@@ -349,20 +449,20 @@ function drawDag() {
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         
         switch (node.status) {
-            case 'pending': ctx.fillStyle = '#1e1e24'; ctx.strokeStyle = '#6b7280'; break;
-            case 'running': ctx.fillStyle = '#3b82f6'; ctx.strokeStyle = '#60a5fa'; break;
-            case 'completed': ctx.fillStyle = '#10b981'; ctx.strokeStyle = '#34d399'; break;
-            case 'failed': ctx.fillStyle = '#ef4444'; ctx.strokeStyle = '#f87171'; break;
-            case 'skipped': ctx.fillStyle = 'repeating-linear-gradient(45deg, #1e1e24, #1e1e24 5px, #8b5cf6 5px, #8b5cf6 10px)'; ctx.strokeStyle = '#8b5cf6'; break;
+            case 'pending': ctx.fillStyle = '#f0eee8'; ctx.strokeStyle = '#76777d'; break; // surface-container / outline
+            case 'running': ctx.fillStyle = '#cfe5ff'; ctx.strokeStyle = '#33628b'; break; // secondary-fixed / secondary
+            case 'completed': ctx.fillStyle = '#b1f0ce'; ctx.strokeStyle = '#0e5138'; break; // tertiary-fixed / on-tertiary-fixed-variant
+            case 'failed': ctx.fillStyle = '#ffdad6'; ctx.strokeStyle = '#ba1a1a'; break; // error-container / error
+            case 'skipped': ctx.fillStyle = '#e5e2dc'; ctx.strokeStyle = '#45464c'; break; // surface-variant / on-surface-variant
         }
         
         if(node.status !== 'skipped') {
             ctx.fill();
         } else {
-             ctx.fillStyle = '#8b5cf6';
+             ctx.fillStyle = '#e5e2dc';
              ctx.fill();
              ctx.globalAlpha = 0.5;
-             ctx.fillStyle = '#1e1e24';
+             ctx.fillStyle = '#fcf9f3';
              ctx.arc(node.x, node.y, node.radius-2, 0, Math.PI*2);
              ctx.fill();
              ctx.globalAlpha = 1.0;
@@ -372,8 +472,8 @@ function drawDag() {
         ctx.stroke();
 
         // Text
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px Inter';
+        ctx.fillStyle = '#1c1c18'; // on-surface
+        ctx.font = '500 12px Inter';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         // Max 10 chars, else ellipse
@@ -388,17 +488,23 @@ async function fetchHistory() {
         const res = await fetch(`${API_URL}/executions`);
         const data = await res.json();
         const tbody = document.getElementById('history-tbody');
+        if(!tbody) return;
         tbody.innerHTML = '';
         
-        data.reverse().forEach(exec => {
+        data.reverse().slice(0, 4).forEach(exec => {
             const tr = document.createElement('tr');
+            tr.className = "bg-surface-container-lowest hover:bg-surface-container transition-colors";
+            
+            let statusBadge = '';
+            if(exec.status === 'completed') statusBadge = '<span class="px-space-4 py-0.5 rounded-DEFAULT bg-tertiary-fixed/30 text-on-tertiary-fixed-variant font-label-caps text-[9px] font-bold">SUCCESS</span>';
+            else if(exec.status === 'failed') statusBadge = '<span class="px-space-4 py-0.5 rounded-DEFAULT bg-error-container text-on-error-container font-label-caps text-[9px] font-bold">FAILED</span>';
+            else statusBadge = '<span class="px-space-4 py-0.5 rounded-DEFAULT bg-secondary-container text-on-secondary-fixed-variant font-label-caps text-[9px] font-bold">RUNNING</span>';
+
             tr.innerHTML = `
-                <td>${exec.executionId.split('-')[0]}...</td>
-                <td>${exec.status}</td>
-                <td><span class="badge ${exec.status}">${exec.status}</span></td>
-                <td>${new Date(exec.startTime).toLocaleString()}</td>
-                <td>${exec.duration ? exec.duration + 'ms' : '-'}</td>
-                <td><button class="btn btn-secondary" onclick="alert('View details not implemented in demo')">View</button></td>
+                <td class="py-space-4 px-space-12 font-mono text-on-surface">${exec.executionId.split('-')[0]}...</td>
+                <td class="py-space-4 px-space-12">${statusBadge}</td>
+                <td class="py-space-4 px-space-12 text-on-surface-variant font-mono">${new Date(exec.startTime).toLocaleString()}</td>
+                <td class="py-space-4 px-space-12 font-mono text-on-surface">${exec.duration ? exec.duration + 'ms' : 'active'}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -406,5 +512,3 @@ async function fetchHistory() {
         console.error("Failed to fetch history");
     }
 }
-
-document.getElementById('btn-refresh-history').addEventListener('click', fetchHistory);

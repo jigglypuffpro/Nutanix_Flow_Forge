@@ -98,7 +98,7 @@ class RestApiExecutor {
 
       return {
           output: data,
-          exitCode: response.status, // We use HTTP status code as exit code
+          exitCode: isSuccess ? 0 : response.status,
           error: isSuccess ? null : `HTTP Error ${response.status}: ${JSON.stringify(data)}`
       };
   }

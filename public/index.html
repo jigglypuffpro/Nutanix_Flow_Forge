@@ -1,114 +1,230 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowForge</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <div class="app-container">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="logo">
-                <div class="logo-icon"></div>
-                <h1>FlowForge</h1>
-            </div>
-            <nav>
-                <button class="nav-btn active" data-view="editor">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                    Editor
-                </button>
-                <button class="nav-btn" data-view="execution">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                    Live Execution
-                </button>
-                <button class="nav-btn" data-view="history">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    History
-                </button>
-            </nav>
-        </aside>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            
-            <!-- View: Editor -->
-            <section id="view-editor" class="view active">
-                <header class="view-header">
-                    <h2>Workflow Editor</h2>
-                    <div class="header-actions">
-                        <select id="example-select" class="glass-select">
-                            <option value="">Load Example...</option>
-                            <option value="basic-pipeline">Basic CI Pipeline</option>
-                            <option value="parallel-build">Parallel Build</option>
-                            <option value="conditional-deploy">Conditional Deploy</option>
-                        </select>
-                        <button id="btn-validate" class="btn btn-secondary">Validate</button>
-                        <button id="btn-execute" class="btn btn-primary">Execute Workflow</button>
-                    </div>
-                </header>
-                <div class="editor-container">
-                    <textarea id="json-editor" spellcheck="false" placeholder="Paste your workflow JSON here..."></textarea>
-                    <div id="validation-errors" class="validation-errors hidden"></div>
-                </div>
-            </section>
-
-            <!-- View: Execution -->
-            <section id="view-execution" class="view">
-                <header class="view-header">
-                    <h2>Live Execution <span id="exec-status-badge" class="badge">Idle</span></h2>
-                    <div id="exec-timer" class="timer">00:00</div>
-                </header>
-                
-                <div class="execution-layout">
-                    <!-- DAG Canvas -->
-                    <div class="dag-panel glass-panel">
-                        <h3>Dependency Graph</h3>
-                        <div class="canvas-container">
-                            <canvas id="dag-canvas"></canvas>
-                        </div>
-                    </div>
-                    
-                    <!-- Logs -->
-                    <div class="logs-panel glass-panel">
-                        <h3>Live Logs</h3>
-                        <div id="logs-container" class="logs-container">
-                            <div class="log-placeholder">Waiting for execution to start...</div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- View: History -->
-            <section id="view-history" class="view">
-                <header class="view-header">
-                    <h2>Execution History</h2>
-                    <button id="btn-refresh-history" class="btn btn-secondary">Refresh</button>
-                </header>
-                <div class="history-panel glass-panel">
-                    <table class="history-table">
-                        <thead>
-                            <tr>
-                                <th>Execution ID</th>
-                                <th>Workflow</th>
-                                <th>Status</th>
-                                <th>Start Time</th>
-                                <th>Duration</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-tbody">
-                            <!-- Populated by JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-        </main>
-    </div>
-    
-    <script src="app.js"></script>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-error":"#ffffff","tertiary":"#00160c","on-secondary-fixed":"#001d33","on-primary-fixed-variant":"#3f475a","background":"#fcf9f3","on-primary":"#ffffff","surface-variant":"#e5e2dc","tertiary-fixed-dim":"#95d4b3","on-surface-variant":"#45464c","secondary":"#33628b","inverse-on-surface":"#f3f0ea","on-tertiary-fixed-variant":"#0e5138","on-secondary":"#ffffff","on-tertiary-container":"#5d9a7c","surface":"#fcf9f3","surface-tint":"#565e73","surface-container-lowest":"#ffffff","primary-container":"#1e2638","surface-container-highest":"#e5e2dc","on-secondary-fixed-variant":"#154a72","surface-container-low":"#f6f3ed","on-primary-container":"#858da3","on-secondary-container":"#295982","secondary-fixed-dim":"#9ecbfa","error-container":"#ffdad6","on-tertiary":"#ffffff","surface-bright":"#fcf9f3","surface-dim":"#dcdad4","on-primary-fixed":"#131b2d","tertiary-container":"#002d1c","inverse-primary":"#bec6de","primary-fixed-dim":"#bec6de","tertiary-fixed":"#b1f0ce","primary-fixed":"#dae2fb","secondary-fixed":"#cfe5ff","secondary-container":"#a4d0ff","on-error-container":"#93000a","surface-container-high":"#ebe8e2","on-surface":"#1c1c18","primary":"#091122","error":"#ba1a1a","inverse-surface":"#31312d","on-background":"#1c1c18","outline-variant":"#c6c6cd","outline":"#76777d","surface-container":"#f0eee8","on-tertiary-fixed":"#002114"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"space-8":"0.5rem","space-12":"0.75rem","space-24":"1.5rem","header-height":"3rem","space-32":"2rem","space-4":"0.25rem","sidebar-width":"15rem","space-2":"0.125rem","space-20":"1.25rem","space-16":"1rem"},"fontFamily":{"label-sm":["Inter"],"body-sm":["Inter"],"code-sm":["Inter"],"headline-sm":["Inter"],"display-lg":["Inter"],"label-caps":["Inter"],"headline-md":["Inter"],"body-md":["Inter"]},"fontSize":{"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.01em","fontWeight":"500"}],"body-sm":["13px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"400"}],"code-sm":["12px",{"lineHeight":"16px","letterSpacing":"0em","fontWeight":"500"}],"headline-sm":["16px",{"lineHeight":"22px","letterSpacing":"-0.01em","fontWeight":"600"}],"display-lg":["32px",{"lineHeight":"38px","letterSpacing":"-0.025em","fontWeight":"600"}],"label-caps":["10px",{"lineHeight":"12px","letterSpacing":"0.08em","fontWeight":"700"}],"headline-md":["22px",{"lineHeight":"28px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-md":["14px",{"lineHeight":"20px","letterSpacing":"-0.005em","fontWeight":"400"}]}}}}</script></head><body class="bg-surface font-body-sm text-on-surface antialiased"><aside class="fixed left-0 top-0 h-screen w-sidebar-width bg-primary-container border-r border-outline-variant/20 z-50 flex flex-col justify-between select-none"><div class="flex flex-col"><div class="h-header-height px-space-16 flex items-center border-b border-outline-variant/20 gap-space-8"><div class="w-space-16 h-space-16 bg-tertiary-fixed rounded-DEFAULT flex items-center justify-center"><span class="material-symbols-outlined text-primary text-[14px]">account_tree</span></div><div class="flex flex-col"><span class="font-label-caps text-label-caps text-on-primary tracking-widest font-bold">FLOWFORGE</span><span class="font-label-caps text-[9px] text-on-primary-container tracking-wider uppercase">DAG ORCHESTRATOR</span></div></div><div class="px-space-12 py-space-8">
+<div class="px-space-8 py-space-4 font-label-caps text-label-caps text-on-primary-container/70">AVAILABLE WORKFLOWS</div>
+<nav class="flex flex-col gap-space-2 mt-space-4" id="workflow-nav">
+</nav>
+</div></div><div class="p-space-12 border-t border-outline-variant/20 flex flex-col gap-space-8 bg-primary/20"><div class="flex items-center justify-between"><span class="font-label-caps text-label-caps text-on-primary-container">ENGINE DAEMON</span><span class="inline-flex items-center gap-space-4 font-label-caps text-label-caps text-tertiary-fixed" id="ws-status-text"><span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed inline-block animate-pulse" id="ws-status-dot"></span>LIVE</span></div><div class="flex flex-col gap-space-4 font-code-sm text-[11px] text-on-primary-container"><div class="flex justify-between items-center"><span class="text-on-primary-container/70">Target:</span><span class="text-on-primary font-mono">ws://localhost:3000</span></div></div><div class="pt-space-4 border-t border-outline-variant/10 flex items-center justify-between text-on-primary-container font-label-caps text-[10px]"><span>BUILD v2.14.0-PROD</span><span class="material-symbols-outlined text-[14px]">terminal</span></div></div></aside><div class="pl-sidebar-width"><!--
+<header class="fixed top-0 left-sidebar-width right-0 h-header-height bg-surface-container-low border-b border-surface-variant z-40 px-space-16 flex items-center justify-between"><div class="flex items-center gap-space-12"><div class="flex items-center gap-space-4 font-code-sm text-code-sm text-on-surface-variant"><span class="text-on-surface font-semibold">PROJECT</span><span class="text-outline-variant">/</span><span class="text-on-surface font-semibold" id="header-project-name">FLOWFORGE</span><span class="text-outline-variant">/</span><span class="text-secondary font-mono" id="header-run-id">RUN #----</span></div></div><div class="flex items-center gap-space-8"><div class="flex items-center bg-surface-container border border-outline-variant rounded-lg px-space-8 py-space-4 gap-space-4"><span class="material-symbols-outlined text-outline text-[16px]">dns</span><span class="font-code-sm text-code-sm text-on-surface">cluster-eu-01a</span><span class="material-symbols-outlined text-outline text-[14px]">expand_more</span></div><div class="h-4 w-px bg-outline-variant/40 mx-space-2"></div><button class="px-space-12 py-space-4 rounded-lg bg-surface-container-high border border-outline-variant font-label-caps text-label-caps text-on-surface hover:bg-surface-variant transition-colors flex items-center gap-space-4"><span class="material-symbols-outlined text-[14px]">play_arrow</span>DEPLOY</button><button class="px-space-12 py-space-4 rounded-lg bg-primary text-on-primary font-label-caps text-label-caps hover:bg-primary/90 transition-colors flex items-center gap-space-4"><span class="material-symbols-outlined text-[14px]">sync</span>RE-EXECUTE</button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-4"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header>
+--><main class="w-full bg-surface min-h-screen px-space-16 py-space-16"><div class="flex flex-col w-full gap-space-12">
+<!-- TOP FUNCTIONAL UTILITY & TELEMETRY STRIP -->
+<section class="w-full bg-surface-container-low shadow-sm rounded-DEFAULT p-space-8 flex flex-col lg:flex-row lg:items-center justify-between gap-space-8 select-none">
+<div class="flex flex-wrap items-center gap-space-8">
+<!-- Workflow File Selector Moved to Sidebar -->
+<!-- Action: Validate -->
+<button class="flex items-center gap-space-4 px-space-8 py-space-4 rounded-DEFAULT bg-surface-container hover:bg-surface-variant text-on-surface font-label-caps text-label-caps transition-colors" id="btn-validate">
+<span class="material-symbols-outlined text-[14px] text-secondary">verified</span>
+<span>VALIDATE SCHEMA</span>
+</button>
+<!-- Action: Execute Trigger -->
+<button class="flex items-center gap-space-8 px-space-12 py-space-4 rounded-DEFAULT bg-primary-container text-on-primary hover:bg-primary transition-colors font-label-caps text-label-caps shadow-sm" id="btn-exec">
+<span class="material-symbols-outlined text-[15px] text-tertiary-fixed">play_circle</span>
+<span>EXECUTE WORKFLOW</span>
+<span class="font-code-sm text-[10px] text-on-primary-container opacity-80 bg-primary/60 px-1 py-0.5 rounded-DEFAULT">⌘↵</span>
+</button>
+<div class="h-4 w-px bg-surface-variant hidden sm:block"></div>
+<!-- Live Execution Telemetry State -->
+<div class="flex items-center gap-space-4 px-space-8 py-space-2 rounded-DEFAULT bg-secondary/10" id="exec-status-container">
+<span class="w-2 h-2 rounded-DEFAULT bg-outline-variant animate-pulse" id="exec-status-dot"></span>
+<span class="font-label-caps text-label-caps text-outline tracking-wider font-bold" id="exec-status-badge">IDLE</span>
+<span class="font-code-sm text-[11px] text-outline font-mono" id="exec-status-sub"></span>
+</div>
+</div>
+<!-- Right Telemetry Metrics Counter -->
+<!--
+<div class="flex items-center gap-space-16 font-code-sm text-[11px] text-on-surface-variant bg-surface-container px-space-12 py-space-4 rounded-DEFAULT">
+<div class="flex items-center gap-space-4">
+<span class="material-symbols-outlined text-outline text-[14px]">timer</span>
+<span class="text-on-surface-variant">ELAPSED:</span>
+<span class="font-mono text-on-surface font-semibold" id="run-timer">00:02:41.08</span>
+</div>
+<div class="h-3 w-px bg-outline-variant/30"></div>
+<div class="flex items-center gap-space-4">
+<span class="material-symbols-outlined text-outline text-[14px]">memory</span>
+<span class="text-on-surface-variant">ALLOC:</span>
+<span class="font-mono text-on-surface font-semibold">342MB <span class="text-outline text-[10px]">/ 1024MB</span></span>
+</div>
+<div class="h-3 w-px bg-outline-variant/30"></div>
+<div class="flex items-center gap-space-4">
+<span class="material-symbols-outlined text-tertiary-fixed-variant text-[14px]">sync_alt</span>
+<span class="text-on-surface-variant">WORKER:</span>
+<span class="font-mono text-on-surface font-semibold">eu-node-04b</span>
+</div>
+</div>
+-->
+</section>
+<!-- SECONDARY DIAGNOSTIC BAR -->
+<!--
+<div class="w-full bg-surface-container-high px-space-12 py-space-4 rounded-DEFAULT flex items-center justify-between font-code-sm text-[11px] text-on-surface-variant select-none">
+<div class="flex items-center gap-space-8">
+<span class="inline-flex items-center gap-1 text-on-tertiary-fixed-variant font-label-caps text-label-caps">
+<span class="material-symbols-outlined text-[13px]">check_circle</span>
+        SPEC VALIDATED
+      </span>
+<span class="text-outline-variant">•</span>
+<span>Engine Target: <strong class="text-on-surface font-mono">DAG-Executor v3.1.2</strong></span>
+<span class="text-outline-variant">•</span>
+<span>Concurrency Model: <strong class="text-on-surface">Async Event-Loop</strong></span>
+</div>
+<div class="flex items-center gap-space-12">
+<span class="text-on-surface-variant">Isolation: <strong class="text-on-surface">gVisor Sandbox</strong></span>
+<span class="text-outline-variant">|</span>
+<span class="font-mono text-[10px] text-outline">HASH: 4f981b...d91c</span>
+</div>
+</div>
+-->
+<!-- ASYMMETRIC 3-COLUMN WORKBENCH -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-space-12 w-full items-start">
+<!-- LEFT PANEL: WORKFLOW EDITOR (4 Cols on LG) -->
+<div class="lg:col-span-4 flex flex-col bg-surface-container-low rounded-DEFAULT shadow-sm overflow-hidden h-[620px]">
+<!-- Panel Subheader -->
+<div class="px-space-12 py-space-8 bg-surface-container flex items-center justify-between select-none">
+<div class="flex items-center gap-space-8">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">edit_note</span>
+<span class="font-label-caps text-label-caps text-on-surface">DAG MANIFEST DEFINITION</span>
+</div>
+<span class="px-space-4 py-0.5 rounded-DEFAULT bg-surface text-on-surface-variant font-code-sm text-[10px]">JSON SPEC v1.4</span>
+</div>
+<!-- Editor Canvas Mock -->
+<div class="flex-1 bg-surface-container-lowest overflow-y-auto p-space-8 font-code-sm text-[11.5px] leading-[18px] text-on-surface flex select-text relative">
+<textarea id="json-editor" class="absolute inset-0 bg-transparent text-on-surface outline-none resize-none p-space-8 font-mono"></textarea>
+<div id="validation-errors" class="hidden absolute bottom-0 left-0 right-0 bg-error/90 text-on-error p-space-12 font-code-sm border-t border-error z-50"></div>
+</div>
+<!-- Editor Action Footer -->
+<!--
+<div class="px-space-12 py-space-4 bg-surface-container flex items-center justify-between font-label-caps text-label-caps text-on-surface-variant select-none">
+<div class="flex items-center gap-space-12">
+<button class="hover:text-on-surface transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">format_align_left</span>
+            FORMAT
+          </button>
+<button class="hover:text-on-surface transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">difference</span>
+            DIFF HEAD
+          </button>
+<button class="hover:text-error transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">backspace</span>
+            CLEAR
+          </button>
+</div>
+<span class="font-code-sm text-[10px] text-outline">UTF-8 • LF • 28 LINES</span>
+</div>
+-->
+</div>
+<!-- MIDDLE PANEL: INTERACTIVE DAG GRAPH VISUALIZER (5 Cols on LG) -->
+<div class="lg:col-span-5 flex flex-col bg-surface-container-low rounded-DEFAULT shadow-sm overflow-hidden h-[620px] relative">
+<!-- DAG Visualizer Header & Viewport Controls -->
+<div class="px-space-12 py-space-8 bg-surface-container flex items-center justify-between select-none z-10">
+<div class="flex items-center gap-space-8">
+<span class="material-symbols-outlined text-[16px] text-secondary">hub</span>
+<span class="font-label-caps text-label-caps text-on-surface" id="dag-title">DIRECTED ACYCLIC GRAPH</span>
+</div>
+<!--
+<div class="flex items-center gap-space-4 bg-surface px-space-4 py-0.5 rounded-DEFAULT">
+<button class="px-space-4 hover:bg-surface-variant rounded-DEFAULT text-on-surface font-code-sm text-[10px]">100%</button>
+<span class="text-outline-variant">|</span>
+<button class="px-space-4 hover:bg-surface-variant rounded-DEFAULT text-on-surface font-code-sm text-[10px]">FIT</button>
+<span class="text-outline-variant">|</span>
+<button class="px-space-4 hover:bg-surface-variant rounded-DEFAULT text-on-surface font-code-sm text-[10px]">TOPOLOGY</button>
+</div>
+-->
+</div>
+<!-- Visualizer Canvas Workspace with Technical Grid -->
+<div class="flex-1 relative overflow-auto bg-surface select-none" id="canvas-container">
+<!-- Engineering Dot Matrix SVG Background -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none opacity-20 z-0" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="20" id="dot-matrix" patternunits="userSpaceOnUse" width="20">
+<circle cx="2" cy="2" fill="#76777D" r="1"></circle>
+</pattern>
+</defs>
+<rect fill="url(#dot-matrix)" height="100%" width="100%"></rect>
+</svg>
+<canvas id="dag-canvas" class="block relative z-20"></canvas>
+</div>
+<!-- Visualizer Metric Ribbon -->
+<!--
+<div class="px-space-12 py-space-4 bg-surface-container flex items-center justify-between font-label-caps text-label-caps text-on-surface-variant select-none">
+<span>Critical Path Latency: <strong class="text-on-surface font-mono">452ms (est. 1820ms total)</strong></span>
+<span>DAG Layout: <strong class="text-on-surface">Hierarchical Sugiyama</strong></span>
+</div>
+-->
+</div>
+<!-- RIGHT PANEL: MONOSPACED TELEMETRY STREAM (3 Cols on LG) -->
+<div class="lg:col-span-3 flex flex-col bg-surface-container-low rounded-DEFAULT shadow-sm overflow-hidden h-[620px]">
+<!-- Panel Header -->
+<div class="px-space-12 py-space-8 bg-surface-container flex items-center justify-between select-none">
+<div class="flex items-center gap-space-8">
+<span class="material-symbols-outlined text-[16px] text-on-surface">terminal</span>
+<span class="font-label-caps text-label-caps text-on-surface">SOCKET TELEMETRY LOGS</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-DEFAULT bg-tertiary-fixed"></span>
+<span class="font-code-sm text-[9px] text-on-surface font-mono">WS_CONNECT</span>
+</div>
+</div>
+<!-- Filter Controls Strip -->
+<!--
+<div class="p-space-4 bg-surface-container-high flex flex-wrap items-center gap-space-4 font-label-caps text-label-caps select-none">
+<button class="px-1.5 py-0.5 rounded-DEFAULT bg-primary text-on-primary font-bold">ALL (184)</button>
+<button class="px-1.5 py-0.5 rounded-DEFAULT bg-surface text-on-surface-variant hover:bg-surface-variant">STDOUT</button>
+<button class="px-1.5 py-0.5 rounded-DEFAULT bg-surface text-on-surface-variant hover:bg-surface-variant">STDERR (0)</button>
+<button class="px-1.5 py-0.5 rounded-DEFAULT bg-surface text-on-surface-variant hover:bg-surface-variant">TRACE</button>
+<div class="ml-auto flex items-center gap-1 text-[9px] text-on-surface-variant">
+<span>SCROLL</span>
+<span class="w-2 h-2 rounded-DEFAULT bg-secondary inline-block"></span>
+</div>
+</div>
+-->
+<!-- Monospace Log Stream Window -->
+<div class="flex-1 bg-surface-container-lowest p-space-8 overflow-y-auto font-code-sm text-[10.5px] leading-relaxed font-mono select-text flex flex-col gap-1 text-on-surface" id="logs-container">
+</div>
+<!-- Socket Input / Query Bar -->
+<!--
+<div class="p-space-8 bg-surface-container flex items-center gap-space-4 font-code-sm text-[10px]">
+<span class="text-outline select-none">&gt;</span>
+<input class="bg-surface-container-low px-space-4 py-0.5 rounded-DEFAULT text-on-surface outline-none w-full text-code-sm placeholder:text-outline font-mono" placeholder="grep log stream..." type="text"/>
+<button class="px-space-8 py-0.5 bg-surface-variant hover:bg-outline-variant/30 text-on-surface font-label-caps text-label-caps rounded-DEFAULT">FIND</button>
+</div>
+-->
+</div>
+</section>
+<!-- BOTTOM EXECUTION SUMMARY & AUDIT DRAWER (Compact History Preview) -->
+<section class="w-full bg-surface-container-low rounded-DEFAULT shadow-sm overflow-hidden flex flex-col">
+<!-- Header of Drawer -->
+<div class="px-space-12 py-space-8 bg-surface-container flex items-center justify-between select-none">
+<div class="flex items-center gap-space-8">
+<span class="material-symbols-outlined text-[16px] text-on-surface">history</span>
+<span class="font-label-caps text-label-caps text-on-surface">RECENT PIPELINE RUN AUDIT LOG</span>
+<span class="text-outline text-label-caps text-[10px]">// LAST 4 EXECUTIONS</span>
+</div>
+<div class="flex items-center gap-space-8">
+<!--
+<span class="font-code-sm text-[11px] text-on-surface-variant">Retention: 30 Days</span>
+<button class="font-label-caps text-label-caps text-secondary hover:underline flex items-center gap-1">
+<span>FULL AUDIT VAULT</span>
+<span class="material-symbols-outlined text-[13px]">arrow_forward</span>
+</button>
+-->
+</div>
+</div>
+<!-- Data Table -->
+<div class="w-full overflow-x-auto">
+<table class="w-full text-left font-code-sm text-code-sm border-collapse">
+<thead>
+<tr class="bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps select-none">
+<th class="py-space-4 px-space-12 font-bold">EXECUTION ID</th>
+<th class="py-space-4 px-space-12 font-bold">STATUS</th>
+<th class="py-space-4 px-space-12 font-bold">START TIME (UTC)</th>
+<th class="py-space-4 px-space-12 font-bold">DURATION</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-transparent text-[11px]" id="history-tbody">
+</tbody>
+</table>
+</div>
+</section>
+<!-- REAL INTERACTIVITY SCRIPT -->
+<script src="app.js"></script>
+</div></main></div></body></html>
