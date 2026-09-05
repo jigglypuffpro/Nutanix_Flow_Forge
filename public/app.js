@@ -317,8 +317,10 @@ function buildDagLayout(steps) {
     
     // Calculate simple depths (not a perfect topological leveler, but good enough for visual)
     let changed = true;
-    while(changed) {
+    let iterations = 0;
+    while(changed && iterations < 1000) {
         changed = false;
+        iterations++;
         steps.forEach(s => {
             let maxDepDepth = -1;
             (s.dependsOn || []).forEach(dep => {
