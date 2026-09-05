@@ -1,3 +1,5 @@
+import DAGResolver from './DAGResolver.js';
+
 /**
  * Validates workflow JSON payloads.
  */
@@ -51,6 +53,15 @@ class WorkflowValidator {
             }
         }
       }
+    }
+
+    if (errors.length === 0) {
+        try {
+            const dag = new DAGResolver(workflow.steps);
+            dag.resolve();
+        } catch (e) {
+            errors.push(`Invalid workflow graph: ${e.message}`);
+        }
     }
 
     return {
