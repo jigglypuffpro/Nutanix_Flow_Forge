@@ -308,8 +308,8 @@ function populateBuiltinWorkflows() {
     });
 
     // Load default
-    if (examples['rigorous-workflow']) {
-        editor.value = JSON.stringify(examples['rigorous-workflow'], null, 2);
+    if (examples['real-ci-cd']) {
+        editor.value = JSON.stringify(examples['real-ci-cd'], null, 2);
     }
 }
 
@@ -366,6 +366,36 @@ const examples = {
             { "name": "send_mock_email", "type": "plugin", "dependsOn": ["process_data"], "config": { "pluginName": "email", "to": "admin@flowforge.local", "subject": "User Processed", "body": "The result from the API and Python parsing is: {{process_data.output}}" } },
             { "name": "cleanup", "type": "shell", "dependsOn": ["log_result", "send_mock_email"], "config": { "command": "rm -rf {{variables.temp_dir}} && echo 'Cleanup complete'" } }
         ]
+    },
+    'real-ci-cd': {
+        "name": "Real CI-CD Demo",
+        "description": "Real Node.js application pipeline: install, lint and test, build, start, perform real HTTP verification, conditionally verify deployment, and report.",
+        "variables": {
+            "app_dir": "./demo-app",
+            "app_name": "flowforge-demo-app",
+            "port": "3001",
+            "base_url": "http://localhost:3001"
+        },
+        "steps": [
+            { "name": "install_dependencies", "type": "shell", "config": { "cwd": "{{variables.app_dir}}", "command": "npm install", "timeout": 60000 } },
+            { "name": "lint", "type": "shell", "dependsOn": ["install_dependencies"], "config": { "cwd": "{{variables.app_dir}}", "command": "npm run lint", "timeout": 30000 } },
+            { "name": "unit_tests", "type": "shell", "dependsOn": ["install_dependencies"], "retry": { "maxAttempts": 2, "backoffMs": 1000 }, "config": { "cwd": "{{variables.app_dir}}", "command": "npm test", "timeout": 60000 } },
+            { "name": "build", "type": "shell", "dependsOn": ["lint", "unit_tests"], "config": { "cwd": "{{variables.app_dir}}", "command": "npm run build", "timeout": 30000 } },
+            { "name": "start_application", "type": "shell", "dependsOn": ["build"], "config": { "cwd": "{{variables.app_dir}}", "command": "lsof -ti:{{variables.port}} | xargs kill -9 2>/dev/null || true && PORT={{variables.port}} node server.js > flowforge-app.log 2>&1 &", "timeout": 10000 } },
+            { "name": "health_check", "type": "rest", "dependsOn": ["start_application"], "retry": { "maxAttempts": 3, "backoffMs": 1000 }, "config": { "method": "GET", "url": "{{variables.base_url}}/health", "timeout": 5000, "expectedStatus": [200] } },
+            { "name": "api_users_check", "type": "rest", "dependsOn": ["health_check"], "config": { "method": "GET", "url": "{{variables.base_url}}/api/users", "headers": { "Accept": "application/json" }, "timeout": 5000, "expectedStatus": [200] } },
+            { "name": "create_user_check", "type": "rest", "dependsOn": ["api_users_check"], "config": { "method": "POST", "url": "{{variables.base_url}}/api/users", "headers": { "Content-Type": "application/json" }, "body": { "name": "{{variables.app_name}}-test" }, "timeout": 5000, "expectedStatus": [201] } },
+            { "name": "verify_deployment", "type": "shell", "dependsOn": ["health_check", "create_user_check"], "if": "{{health_check.exitCode}} == 0", "config": { "cwd": "{{variables.app_dir}}", "command": "echo \"Deployment verified for {{variables.app_name}}\" && echo \"Health response: {{health_check.output}}\" && echo \"Created user response: {{create_user_check.output}}\"", "timeout": 10000 } },
+            { "name": "deployment_report", "type": "plugin", "dependsOn": ["verify_deployment"], "config": { "pluginName": "log", "message": "REAL CI/CD DEMO SUCCESS | App={{variables.app_name}} | Health={{health_check.exitCode}} | API={{create_user_check.exitCode}} | Verification={{verify_deployment.exitCode}}" } },
+            { "name": "demo_delay", "type": "plugin", "dependsOn": ["deployment_report"], "config": { "pluginName": "delay", "ms": 500 } },
+            { "name": "final_summary", "type": "plugin", "dependsOn": ["demo_delay"], "config": { "pluginName": "log", "message": "FLOWFORGE PIPELINE COMPLETE | {{variables.app_name}} is healthy and verified." } }
+        ],
+        "onFailure": {
+            "type": "shell",
+            "config": {
+                "command": "echo \"CI/CD PIPELINE FAILED at step {{_failedStep}}\""
+            }
+        }
     }
 };
 
