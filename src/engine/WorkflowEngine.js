@@ -73,11 +73,11 @@ class WorkflowEngine extends EventEmitter {
             await this.executeStep(step);
             return; // Success
         } catch (error) {
+            this.emitStepEvent('step:error', step.name, { error: error.message, retry: attempt, maxAttempts });
             if (attempt === maxAttempts) {
                 await this.handleWorkflowFailure(error, step.name);
                 return;
             }
-            this.emitStepEvent('step:error', step.name, { error: error.message, retry: attempt, maxAttempts });
             await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
     }
@@ -130,6 +130,7 @@ class WorkflowEngine extends EventEmitter {
   async handleWorkflowFailure(error, failedStepName) {
     this.status = 'failed';
     this.endTime = Date.now();
+    this.error = `Failed at step '${failedStepName}': ${error.message}`;
     this.emit('workflow:failed', { executionId: this.executionId, failedStep: failedStepName, error: error.message });
 
     if (this.workflow.onFailure) {
@@ -157,6 +158,7 @@ class WorkflowEngine extends EventEmitter {
       return {
           executionId: this.executionId,
           status: this.status,
+          error: this.error,
           startTime: this.startTime,
           endTime: this.endTime,
           duration: this.endTime ? this.endTime - this.startTime : null,
